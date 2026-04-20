@@ -23,13 +23,6 @@ The graph exports to GraphML, which tools like Gephi, Neo4j, or yEd can visualiz
 
 One Subtle Design Choice Worth Noting
 The _enrich_coords_with_places method links place names to coordinates by character proximity in the raw text — if a coordinate appears within 500 characters of a place name, they get associated. Simple but effective for structured reports.
-"""
-
-"""
-doc_parser.py
-=============
-Extracts geospatial entities (lat/lon, place names, dates) from PDFs and DOCX files,
-then builds a GraphRAG-style relationship graph linking them.
 
 Supports:
   - Digital PDFs, scanned PDFs (via OCR fallback), DOCX, plain text
@@ -63,6 +56,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional
 from dataclasses import dataclass, asdict, field
+from src.backend.graph_builder import GraphBuilder
 
 import networkx as nx
 
@@ -86,7 +80,7 @@ class GeoPoint:
 
 @dataclass
 class DateMention:
-    raw: str                          # original string e.g. "April 07, 2026"
+    raw: str                           # original string e.g. "April 07, 2026"
     parsed: Optional[str] = None      # ISO format: "2026-04-07"
     page: Optional[int] = None
     context: Optional[str] = None     # surrounding sentence
