@@ -1,0 +1,49 @@
+{
+    "document_info": [
+        {
+            "date": "April 2026",
+            "time": null,
+            "place": "Expedition India",
+            "latitude": null,
+            "longitude": null,
+            "role": null,
+            "summary": null
+        },
+        {
+            "date": "April 11th",
+            "time": null,
+            "place": "Nubra Valley",
+            "latitude": null,
+            "longitude": null,
+            "role": null,
+            "summary": null
+        },
+        {
+            "date": "April 11, 2026",
+            "time": "17:30 PM",
+            "place": "Hunder",
+            "latitude": "34.5822° N",
+            "longitude": null,
+            "role": "Arjun",
+            "summary": null
+        },
+        {
+            "date": "April 12, 2026",
+            "time": "06:00 AM",
+            "place": "Diskit Monastery",
+            "latitude": "34.5444 N",
+            "longitude": null,
+            "role": "Meera",
+            "summary": null
+        },
+        {
+            "date": "April 13, 2026",
+            "time": "21:00 PM",
+            "place": "Leh",
+            "latitude": "34.5822 N",
+            "longitude": null,
+            "role": "Arjun",
+            "summary": null
+        }
+    ]
+}

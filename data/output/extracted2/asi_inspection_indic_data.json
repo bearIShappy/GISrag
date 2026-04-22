@@ -1,0 +1,49 @@
+{
+    "document_info": [
+        {
+            "date": "Q2 2026",
+            "time": null,
+            "place": null,
+            "latitude": null,
+            "longitude": null,
+            "role": null,
+            "summary": null
+        },
+        {
+            "date": "April 12, 2026",
+            "time": "07:15 IST",
+            "place": "Sun Temple, Konark (Odisha)",
+            "latitude": null,
+            "longitude": null,
+            "role": null,
+            "summary": "Inspection"
+        },
+        {
+            "date": "13th-century",
+            "time": null,
+            "place": "Kalinga",
+            "latitude": "19.8876",
+            "longitude": "86.0945",
+            "role": null,
+            "summary": null
+        },
+        {
+            "date": "April 14, 2026",
+            "time": ".",
+            "place": "Hampi Group of Monuments",
+            "latitude": null,
+            "longitude": null,
+            "role": null,
+            "summary": null
+        },
+        {
+            "date": null,
+            "time": "11:30 IST",
+            "place": "Vitthala Temple complex",
+            "latitude": "15.3350° N",
+            "longitude": "76.4600",
+            "role": null,
+            "summary": null
+        }
+    ]
+}

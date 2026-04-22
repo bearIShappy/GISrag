@@ -1,0 +1,31 @@
+{
+    "document_info": [
+        {
+            "date": "March 12, 2024",
+            "time": "08:45 AM",
+            "place": null,
+            "latitude": "7.6775° N",
+            "longitude": "98.7651° E",
+            "role": "Field Notes",
+            "summary": null
+        },
+        {
+            "date": "March 15, 2024",
+            "time": "14:20 PM",
+            "place": "Sipadan Island, Malaysia - South Point",
+            "latitude": null,
+            "longitude": "118.6287° E",
+            "role": "Field Notes",
+            "summary": null
+        },
+        {
+            "date": "April 02, 2024",
+            "time": "11:10 AM",
+            "place": null,
+            "latitude": null,
+            "longitude": "145.8765° E",
+            "role": "Field Notes",
+            "summary": null
+        }
+    ]
+}

@@ -1,0 +1,40 @@
+{
+    "document_info": [
+        {
+            "date": null,
+            "time": "2024-01-10T09:30:00Z",
+            "place": "Port of Rotterdam, Netherlands",
+            "latitude": "51.9225° N",
+            "longitude": "4.4792° E",
+            "role": null,
+            "summary": null
+        },
+        {
+            "date": null,
+            "time": null,
+            "place": "Frankfurt Cargo City, Germany",
+            "latitude": "50.1109° N",
+            "longitude": "8.6821° E",
+            "role": null,
+            "summary": null
+        },
+        {
+            "date": null,
+            "time": null,
+            "place": "Dubai Logistics City, UAE",
+            "latitude": "24.8933° N",
+            "longitude": "55.1601° E",
+            "role": null,
+            "summary": null
+        },
+        {
+            "date": "2024-02-05T07:00:00Z",
+            "time": null,
+            "place": "Cape Town Harbor, South Africa",
+            "latitude": "33.9249° S",
+            "longitude": "18.4241° E",
+            "role": null,
+            "summary": null
+        }
+    ]
+}

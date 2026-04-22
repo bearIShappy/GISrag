@@ -1,0 +1,31 @@
+{
+    "document_info": [
+        {
+            "date": "April 05, 2026",
+            "time": null,
+            "place": "Kathmandu, Nepal",
+            "latitude": null,
+            "longitude": null,
+            "role": null,
+            "summary": null
+        },
+        {
+            "date": "today",
+            "time": "18:45 NPT",
+            "place": "Nepal",
+            "latitude": "26.9483 N",
+            "longitude": "88.1222 E",
+            "role": null,
+            "summary": null
+        },
+        {
+            "date": null,
+            "time": "05:30 IST",
+            "place": "Kanchenjunga Base",
+            "latitude": "27.7025 N",
+            "longitude": "88.1483 E",
+            "role": null,
+            "summary": null
+        }
+    ]
+}

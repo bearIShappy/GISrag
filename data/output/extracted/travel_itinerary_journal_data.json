@@ -1,0 +1,22 @@
+{
+    "document_info": [
+        {
+            "date": "May 12, 2024",
+            "time": "06:00 AM",
+            "place": "Machu Picchu Citadel",
+            "latitude": "13.1631 S",
+            "longitude": "72.5450 W",
+            "role": null,
+            "summary": null
+        },
+        {
+            "date": "May 20, 2024",
+            "time": "17:45 PM",
+            "place": "Salar de Uyuni",
+            "latitude": "20.1338 S",
+            "longitude": "67.4891 W",
+            "role": null,
+            "summary": null
+        }
+    ]
+}

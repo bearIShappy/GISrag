@@ -1,0 +1,31 @@
+{
+    "document_info": [
+        {
+            "date": "April 2026",
+            "time": null,
+            "place": "Varanasi, Uttar Pradesh",
+            "latitude": "25.3176° N",
+            "longitude": "82.9739° E",
+            "role": null,
+            "summary": null
+        },
+        {
+            "date": "April 2026",
+            "time": null,
+            "place": null,
+            "latitude": null,
+            "longitude": null,
+            "role": null,
+            "summary": null
+        },
+        {
+            "date": "April 11th",
+            "time": null,
+            "place": null,
+            "latitude": "34.5822 N",
+            "longitude": null,
+            "role": null,
+            "summary": null
+        }
+    ]
+}

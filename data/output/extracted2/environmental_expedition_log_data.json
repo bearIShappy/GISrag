@@ -1,0 +1,40 @@
+{
+    "document_info": [
+        {
+            "date": "March 12, 2024",
+            "time": "08:45 AM",
+            "place": null,
+            "latitude": "7.6775° N",
+            "longitude": "98.7651° E",
+            "role": null,
+            "summary": null
+        },
+        {
+            "date": "March 15, 2024",
+            "time": "14:20 PM",
+            "place": "Sipadan Island, Malaysia - South Point",
+            "latitude": null,
+            "longitude": null,
+            "role": null,
+            "summary": null
+        },
+        {
+            "date": "April 02, 2024",
+            "time": "11:10 AM",
+            "place": null,
+            "latitude": "4.1147° N",
+            "longitude": null,
+            "role": null,
+            "summary": null
+        },
+        {
+            "date": null,
+            "time": null,
+            "place": "northern sector",
+            "latitude": "15.1234",
+            "longitude": "145.8765",
+            "role": "Observation",
+            "summary": "Crown-of-thorns starfish activity noted"
+        }
+    ]
+}

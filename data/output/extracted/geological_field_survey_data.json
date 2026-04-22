@@ -1,0 +1,22 @@
+{
+    "document_info": [
+        {
+            "date": "October 05, 2024",
+            "time": "03:22:11 UTC",
+            "place": "Observation Point Alpha",
+            "latitude": "31.5966° N",
+            "longitude": "130.5595° E",
+            "role": null,
+            "summary": null
+        },
+        {
+            "date": "October 07, 2024",
+            "time": "11:05:00 UTC",
+            "place": "Observation Point Beta",
+            "latitude": "7.5407° S",
+            "longitude": "110.4457° E",
+            "role": null,
+            "summary": null
+        }
+    ]
+}

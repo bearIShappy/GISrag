@@ -1,0 +1,30 @@
+# Manages both your App AND Neo4j
+version: '3.8'
+
+services:
+  # Your Neo4j Database
+  neo4j-db:
+    image: neo4j:latest
+    container_name: neo4j-gis
+    ports:
+      - "7474:7474" # HTTP Browser
+      - "7687:7687" # Bolt Protocol
+    environment:
+      - NEO4J_AUTH=neo4j/password
+    volumes:
+      - neo4j_data:/data # Saves your graph data even if container stops
+
+  # Your Python Application
+  gis-app:
+    build: .
+    container_name: gisrag-app
+    depends_on:
+      - neo4j-db
+    env_file:
+      - .env
+    volumes:
+      # Mounts your local data folder to the container so you can see outputs instantly
+      - ./data:/app/data 
+
+volumes:
+  neo4j_data:

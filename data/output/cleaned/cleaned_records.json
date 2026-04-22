@@ -1,0 +1,178 @@
+[
+  {
+    "place": "Sun Temple, Konark",
+    "latitude": 19.8876,
+    "longitude": 86.0945,
+    "date": "2026-04-12",
+    "date_raw": "April 12, 2026",
+    "time": "07:15 IST",
+    "role": "SITE INSPECTION AUDIT",
+    "summary": null,
+    "source_file": "asi_inspection_indic_data.json"
+  },
+  {
+    "place": "Hampi Group of Monuments (Karnataka)",
+    "latitude": 15.335,
+    "longitude": 76.46,
+    "date": "2026-04-14",
+    "date_raw": "April 14, 2026",
+    "time": "11:30 IST",
+    "role": "SITE INSPECTION AUDIT",
+    "summary": null,
+    "source_file": "asi_inspection_indic_data.json"
+  },
+  {
+    "place": "Ao Nang, Thailand",
+    "latitude": 7.6775,
+    "longitude": 98.7651,
+    "date": "2024-03-12",
+    "date_raw": "March 12, 2024",
+    "time": "08:45 AM",
+    "role": "Field Notes",
+    "summary": null,
+    "source_file": "environmental_expedition_log_data.json"
+  },
+  {
+    "place": "Sipadan Island, Malaysia - South Point",
+    "latitude": null,
+    "longitude": null,
+    "date": "2024-03-15",
+    "date_raw": "March 15, 2024",
+    "time": "14:20 PM",
+    "role": "Field Notes",
+    "summary": null,
+    "source_file": "environmental_expedition_log_data.json"
+  },
+  {
+    "place": "Observation Point Alpha",
+    "latitude": 31.5966,
+    "longitude": 130.5595,
+    "date": "2024-10-05",
+    "date_raw": "October 05, 2024",
+    "time": "03:22:11 UTC",
+    "role": null,
+    "summary": null,
+    "source_file": "geological_field_survey_data.json"
+  },
+  {
+    "place": "Observation Point Beta",
+    "latitude": -7.5407,
+    "longitude": 110.4457,
+    "date": "2024-10-07",
+    "date_raw": "October 07, 2024",
+    "time": "11:05:00 UTC",
+    "role": null,
+    "summary": null,
+    "source_file": "geological_field_survey_data.json"
+  },
+  {
+    "place": "Port of Rotterdam, Netherlands",
+    "latitude": 51.9225,
+    "longitude": 4.4792,
+    "date": null,
+    "date_raw": null,
+    "time": "2024-01-10T09:30:00Z",
+    "role": null,
+    "summary": null,
+    "source_file": "global_logistics_tracking_data.json"
+  },
+  {
+    "place": "Frankfurt Cargo City, Germany",
+    "latitude": 50.1109,
+    "longitude": 8.6821,
+    "date": null,
+    "date_raw": null,
+    "time": null,
+    "role": null,
+    "summary": null,
+    "source_file": "global_logistics_tracking_data.json"
+  },
+  {
+    "place": "Dubai Logistics City, UAE",
+    "latitude": 24.8933,
+    "longitude": 55.1601,
+    "date": null,
+    "date_raw": null,
+    "time": null,
+    "role": null,
+    "summary": null,
+    "source_file": "global_logistics_tracking_data.json"
+  },
+  {
+    "place": "Cape Town Harbor, South Africa",
+    "latitude": -33.9249,
+    "longitude": 18.4241,
+    "date": "2024-02-05",
+    "date_raw": "2024-02-05T07:00:00Z",
+    "time": null,
+    "role": null,
+    "summary": null,
+    "source_file": "global_logistics_tracking_data.json"
+  },
+  {
+    "place": "Kathmandu, Nepal",
+    "latitude": 26.9483,
+    "longitude": 88.1222,
+    "date": "2026-04-05",
+    "date_raw": "April 05, 2026",
+    "time": "18:45 NPT",
+    "role": null,
+    "summary": null,
+    "source_file": "himalayan_expedition_nepal_india_data.json"
+  },
+  {
+    "place": "Kanchenjunga Base, Sikkim",
+    "latitude": 27.7025,
+    "longitude": 88.1483,
+    "date": "2026-04-09",
+    "date_raw": "April 09, 2026",
+    "time": "05:30 IST",
+    "role": null,
+    "summary": null,
+    "source_file": "himalayan_expedition_nepal_india_data.json"
+  },
+  {
+    "place": "Blackwood National Park",
+    "latitude": 44.3126,
+    "longitude": -110.512,
+    "date": "2024-08-14",
+    "date_raw": "August 14, 2024",
+    "time": "16:42 Mountain Time",
+    "role": "aerial surveillance",
+    "summary": null,
+    "source_file": "incident_report_forestry_data.json"
+  },
+  {
+    "place": "Varanasi, Uttar Pradesh",
+    "latitude": 25.3176,
+    "longitude": 82.9739,
+    "date": "2026-04",
+    "date_raw": "April 2026",
+    "time": null,
+    "role": null,
+    "summary": null,
+    "source_file": "India_Travel_Expedition_Log_Full_data.json"
+  },
+  {
+    "place": "Machu Picchu Citadel",
+    "latitude": -13.1631,
+    "longitude": -72.545,
+    "date": "2024-05-12",
+    "date_raw": "May 12, 2024",
+    "time": "06:00 AM",
+    "role": null,
+    "summary": null,
+    "source_file": "travel_itinerary_journal_data.json"
+  },
+  {
+    "place": "Salar de Uyuni",
+    "latitude": -20.1338,
+    "longitude": -67.4891,
+    "date": "2024-05-20",
+    "date_raw": "May 20, 2024",
+    "time": "17:45 PM",
+    "role": null,
+    "summary": null,
+    "source_file": "travel_itinerary_journal_data.json"
+  }
+]
