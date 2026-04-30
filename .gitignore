@@ -2,11 +2,11 @@ venvGIS/
 .env
 venv/
 gis_rag_pipeline.svg
-Docker/
 README.md
 Screenshot 2026-04-28 172427.png
 data/
 image/
 models/
 requirements.txt
+Docker/
        
