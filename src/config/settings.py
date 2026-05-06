@@ -49,22 +49,23 @@ class TextEmbeddingConfig:
     VECTOR_DIM          = int(os.getenv("VECTOR_DIMENSION", "1024"))
     NORMALIZE           = True
     BATCH_SIZE          = int(os.getenv("EMBED_BATCH_SIZE", "32"))
-    QUERY_INSTRUCTION   = "Represent this sentence for retrieving relevant passages: "
+    QUERY_INSTRUCTION   = "Represent this sentence for searching relevant passages: "
     PASSAGE_INSTRUCTION = ""
 
 # ─────────────────────────────────────────────────────────────
-# Neo4j Graph Builder
+# PostgreSQL + pgvector
 # ─────────────────────────────────────────────────────────────
-class Neo4jConfig:
-    URI          = os.getenv("NEO4J_URI",      "bolt://localhost:7687")
-    USER         = os.getenv("NEO4J_USER",     "neo4j")
-    PASSWORD     = os.getenv("NEO4J_PASSWORD", "password")
-    UPSERT_BATCH = 64
+class PostgresConfig:
+    HOST     = os.getenv("PG_HOST",     "localhost")
+    PORT     = int(os.getenv("PG_PORT", "5432"))
+    DB       = os.getenv("PG_DB",       "gisrag_db")
+    USER     = os.getenv("PG_USER",     "gisrag")
+    PASSWORD = os.getenv("PG_PASSWORD", "gisrag_secret")
 
-    # Vector index settings (previously in config.py)
-    VECTOR_INDEX_NAME  = os.getenv("VECTOR_INDEX_NAME",    "my_vector_index")
-    VECTOR_DIMENSION   = int(os.getenv("VECTOR_DIMENSION", "1024"))
+    # pgvector settings
+    VECTOR_DIMENSION    = int(os.getenv("VECTOR_DIMENSION", "1024"))
     SIMILARITY_FUNCTION = os.getenv("SIMILARITY_FUNCTION", "cosine")
+    VECTOR_INDEX_NAME   = os.getenv("VECTOR_INDEX_NAME",   "idx_records_embedding")
 
 # ─────────────────────────────────────────────────────────────
 # RAG & Chunker
@@ -79,7 +80,7 @@ class RetrievalConfig:
     MAX_CONTEXT_CHARS = 4000
 
 # ─────────────────────────────────────────────────────────────
-# LLM (Offline Llama.cpp)
+# LLM (Offline Llama.cpp — legacy, kept for local GGUF usage)
 # ─────────────────────────────────────────────────────────────
 class LLMConfig:
     PROVIDER     = "local"
@@ -91,7 +92,15 @@ class LLMConfig:
     STOP_TOKENS  = ["<channel|>", "<turn|>", "<eos>"]
 
 # ─────────────────────────────────────────────────────────────
-# Data paths (previously in config.py)
+# Ollama  (RAG pipeline default — gemma3:4b)
+# ─────────────────────────────────────────────────────────────
+class OllamaConfig:
+    BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    MODEL    = os.getenv("OLLAMA_MODEL",    "gemma3:4b")
+    TIMEOUT  = int(os.getenv("OLLAMA_TIMEOUT", "120"))
+
+# ─────────────────────────────────────────────────────────────
+# Data paths
 # ─────────────────────────────────────────────────────────────
 CLEANED_RECORDS_PATH = Path(
     os.getenv("CLEANED_OUTPUT_FOLDER", str(OUTPUTS_DIR))
@@ -109,10 +118,11 @@ class Settings:
     cleaned_records_path = CLEANED_RECORDS_PATH
 
     text_embedding = TextEmbeddingConfig()
-    neo4j          = Neo4jConfig()
+    postgres       = PostgresConfig()
     chunk          = ChunkConfig()
     retrieval      = RetrievalConfig()
     llm            = LLMConfig()
+    ollama         = OllamaConfig()
     prompts_dir    = PROMPTS_DIR
 
 settings = Settings()

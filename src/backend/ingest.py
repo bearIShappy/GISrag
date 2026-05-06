@@ -1,369 +1,56 @@
-# """
-# ingest.py — Stage 2: Graph + Vector Ingestion into Neo4j
-# ---------------------------------------------------------
-# Input:  cleaned_records.json  (output of cleaner.py)
-# Output: Neo4j graph with Document, Location, Date, Role nodes
-#         + vector embeddings on Document for semantic search
-
-# Changes from the original vs the cleaner.py pipeline
-# ─────────────────────────────────────────────────────
-# 1. FIELD NAMES FIXED
-#    cleaner writes 'latitude'/'longitude'; old code read 'lat'/'lon' → KeyError.
-#    Now reads the correct field names.
-
-# 2. STABLE DOCUMENT ID GENERATED
-#    cleaner never writes an 'id' field; old MERGE on record.id=None collapsed
-#    all documents onto a single node. ID is now a deterministic hash of
-#    (source_file + date + place + latitude) so re-runs are idempotent.
-
-# 3. NULL SUMMARY GUARD
-#    model.encode(None) raises TypeError and crashes the whole batch.
-#    Embedding is built from a fallback text when summary is null:
-#    "{place} {date} {role}" — always a non-empty string.
-
-# 4. NULL ROLE / NULL DATE — NO ORPHAN NODES
-#    MERGE (r:Role {role: null}) and MERGE (dt:Date {date: null}) create
-#    garbage nodes that pollute every future query. Relationships are now
-#    only created when the value is non-null (FOREACH trick).
-
-# 5. GEOCODE_STATUS CONFIDENCE FILTER
-#    Records with geocode_status "mismatch" are skipped — they belong in
-#    quarantine.json, not the graph. Records with partial/uncertain status
-#    are ingested but flagged on the Location node so queries can filter
-#    by confidence.
-
-# 6. ALL CLEANER FIELDS STORED
-#    New fields written to the graph:
-#      Document  : time, date_type, date_raw, geocode_status,
-#                  place_coord_validated, place_coord_distance_km
-#      Location  : geocoded_place, geocode_status
-#    Nothing from the pipeline is silently discarded.
-
-# 7. BATCHED EMBEDDING + PROGRESS LOGGING
-#    Embeddings are generated in configurable batches (default 32) with
-#    per-batch progress so long runs don't look frozen.
-# """
-# import os
-# import hashlib
-# import json
-# import logging
-# import os
-# from typing import List, Dict, Any
-
-# from neo4j import GraphDatabase
-# from sentence_transformers import SentenceTransformer
-
-
-# from .config import Config
-
-# # ─────────────────────────────────────────────
-# # LOGGING
-# # ─────────────────────────────────────────────
-
-# logging.basicConfig(
-#     level=logging.INFO,
-#     format='%(asctime)s - %(levelname)s - %(message)s'
-# )
-# logger = logging.getLogger(__name__)
-
-# # ─────────────────────────────────────────────
-# # CONSTANTS
-# # ─────────────────────────────────────────────
-
-# # geocode_status values whose records must NOT enter the graph
-# SKIP_STATUSES = {"mismatch"}
-
-# # geocode_status values where coords exist but confidence is reduced
-# WARN_STATUSES = {"partial", "reverse_failed", "failed", "forward"}
-
-# # EMBED_DIM sourced from settings.text_embedding.VECTOR_DIM
-# EMBED_BATCH_SIZE = os.getenv("EMBED_BATCH_SIZE")
-# EMBED_MODEL_PATH = settings.text_embedding.MODEL_PATH
-
-# # ─────────────────────────────────────────────
-# # HELPERS
-# # ─────────────────────────────────────────────
-
-# def make_document_id(record: Dict[str, Any]) -> str:
-#     """
-#     Deterministic document ID from stable fields.
-
-#     Using a hash means:
-#       - Re-running ingest on the same data is fully idempotent (MERGE no-ops).
-#       - No two records from different source files / dates / places collide,
-#         even when summary is null.
-#     """
-#     key = "|".join([
-#         str(record.get("source_file") or ""),
-#         str(record.get("date")        or ""),
-#         str(record.get("place")       or ""),
-#         str(record.get("latitude")    or ""),
-#     ])
-#     return hashlib.sha256(key.encode()).hexdigest()[:16]
-
-
-# def build_embed_text(record: Dict[str, Any]) -> str:
-#     """
-#     Construct the text to embed for a record.
-
-#     Priority:
-#       1. summary  (richest semantic content)
-#       2. Fallback: place / geocoded_place / date / role concatenated —
-#          so the embedding is never built from an empty string.
-#     """
-#     if record.get("summary"):
-#         return record["summary"]
-
-#     parts = [
-#         record.get("place") or record.get("geocoded_place"),
-#         record.get("date_raw") or record.get("date"),
-#         record.get("role"),
-#         record.get("source_file"),
-#     ]
-#     fallback = " ".join(str(p) for p in parts if p)
-#     return fallback if fallback.strip() else "unknown record"
-
-
-# def prepare_batch(
-#     records: List[Dict[str, Any]],
-#     model: SentenceTransformer,
-# ) -> List[Dict[str, Any]]:
-#     """
-#     Filter, enrich each record with a stable id and a vector embedding.
-
-#     Skips records whose geocode_status is in SKIP_STATUSES (mismatch).
-#     Logs a warning for WARN_STATUSES records that are included with
-#     reduced-confidence coordinates.
-#     """
-#     accepted: List[Dict[str, Any]] = []
-#     skipped = 0
-
-#     for rec in records:
-#         status = rec.get("geocode_status", "exact")
-
-#         if status in SKIP_STATUSES:
-#             logger.warning(
-#                 "Skipping record (geocode_status=%s): place=%s date=%s source=%s",
-#                 status, rec.get("place"), rec.get("date"), rec.get("source_file"),
-#             )
-#             skipped += 1
-#             continue
-
-#         if status in WARN_STATUSES:
-#             logger.warning(
-#                 "Low-confidence coords (geocode_status=%s): place=%s source=%s",
-#                 status,
-#                 rec.get("place") or rec.get("geocoded_place"),
-#                 rec.get("source_file"),
-#             )
-
-#         accepted.append(rec)
-
-#     if skipped:
-#         logger.info("Skipped %d record(s) with status in %s.", skipped, SKIP_STATUSES)
-
-#     # Batch-encode all embed texts at once (much faster than one-by-one)
-#     texts = [build_embed_text(r) for r in accepted]
-#     for i in range(0, len(texts), EMBED_BATCH_SIZE):
-#         batch_texts = texts[i : i + EMBED_BATCH_SIZE]
-#         embeddings = model.encode(batch_texts, show_progress_bar=False)
-#         for j, emb in enumerate(embeddings):
-#             idx = i + j
-#             accepted[idx] = {
-#                 **accepted[idx],
-#                 "id":        make_document_id(accepted[idx]),
-#                 "embedding": emb.tolist(),
-#             }
-#         logger.info(
-#             "Embedded records %d-%d / %d",
-#             i + 1, min(i + EMBED_BATCH_SIZE, len(accepted)), len(accepted),
-#         )
-
-#     return accepted
-
-
-# # ─────────────────────────────────────────────
-# # NEO4J INGESTOR
-# # ─────────────────────────────────────────────
-
-# class Neo4jIngestor:
-#     """
-#     Ingests cleaned records into Neo4j with graph relationships and
-#     vector embeddings.
-#     """
-
-#     def __init__(self):
-#         self.driver = GraphDatabase.driver(
-#             Config.NEO4J_URI,
-#             auth=(Config.NEO4J_USERNAME, Config.NEO4J_PASSWORD),
-#         )
-#         self.model = SentenceTransformer(EMBED_MODEL_PATH)
-
-#     def close(self):
-#         self.driver.close()
-
-#     # ── Schema setup ──────────────────────────────────────────────────────
-
-#     def create_constraints(self):
-#         """Uniqueness constraints and lookup indexes."""
-#         queries = [
-#             # Document uniqueness — stable hash id prevents duplicate nodes
-#             "CREATE CONSTRAINT document_id IF NOT EXISTS FOR (d:Document) REQUIRE d.id IS UNIQUE",
-#             # Lookup indexes
-#             "CREATE INDEX role_name      IF NOT EXISTS FOR (r:Role)     ON (r.role)",
-#             "CREATE INDEX location_place IF NOT EXISTS FOR (l:Location) ON (l.place)",
-#             "CREATE INDEX date_value     IF NOT EXISTS FOR (dt:Date)    ON (dt.date)",
-#         ]
-#         with self.driver.session() as session:
-#             for query in queries:
-#                 session.run(query)
-#         logger.info("Constraints and indexes created.")
-
-#     def create_vector_index(self):
-#         """Vector index for semantic similarity search on Document.embedding."""
-#         query = f"""
-#         CREATE VECTOR INDEX {settings.neo4j.VECTOR_INDEX_NAME} IF NOT EXISTS
-#         FOR (d:Document) ON (d.embedding)
-#         OPTIONS {{
-#           indexConfig: {{
-#             `vector.dimensions`:          {settings.neo4j.VECTOR_DIMENSION},
-#             `vector.similarity_function`: '{settings.neo4j.SIMILARITY_FUNCTION}'
-#           }}
-#         }}
-#         """
-#         with self.driver.session() as session:
-#             session.run(query)
-#         logger.info("Vector index '%s' created.", settings.neo4j.VECTOR_INDEX_NAME)
-
-#     # ── Ingestion ─────────────────────────────────────────────────────────
-
-#     def ingest_records(self, records: List[Dict[str, Any]]):
-#         """
-#         Prepare embeddings then write to Neo4j in one UNWIND batch.
-
-#         Graph schema written:
-#           (:Document)-[:LOCATED_AT]->(:Location)
-#           (:Document)-[:HAPPENED_ON]->(:Date)     <- only when date non-null
-#           (:Document)-[:HAS_ROLE]->(:Role)         <- only when role non-null
-
-#         All cleaner.py fields are preserved on the nodes they belong to.
-#         Nothing is silently dropped.
-#         """
-#         if not records:
-#             logger.warning("ingest_records called with empty list — nothing to do.")
-#             return
-
-#         batch = prepare_batch(records, self.model)
-#         if not batch:
-#             logger.warning("All records were filtered out. Nothing ingested.")
-#             return
-
-#         # FOREACH (x IN CASE WHEN cond THEN [1] ELSE [] END | ...)
-#         # is the idiomatic Neo4j way to conditionally execute a MERGE
-#         # inside an UNWIND batch without breaking the pipeline.
-#         query = """
-#         UNWIND $batch AS rec
-
-#         // ── Document node ────────────────────────────────────────────
-#         MERGE (d:Document {id: rec.id})
-#         SET d.summary                 = rec.summary,
-#             d.source_file             = rec.source_file,
-#             d.time                    = rec.time,
-#             d.date_type               = rec.date_type,
-#             d.date_raw                = rec.date_raw,
-#             d.geocode_status          = rec.geocode_status,
-#             d.place_coord_validated   = rec.place_coord_validated,
-#             d.place_coord_distance_km = rec.place_coord_distance_km,
-#             d.embedding               = rec.embedding
-
-#         // ── Location node ─────────────────────────────────────────────
-#         // Use extracted place name when available; fall back to the
-#         // reverse-geocoded label. Never MERGE on null — use a sentinel.
-#         WITH d, rec,
-#              coalesce(rec.place, rec.geocoded_place, '__unknown__') AS loc_key
-#         MERGE (l:Location {place: loc_key})
-#         SET l.latitude       = rec.latitude,
-#             l.longitude      = rec.longitude,
-#             l.geocoded_place = rec.geocoded_place,
-#             l.geocode_status = rec.geocode_status
-#         MERGE (d)-[:LOCATED_AT]->(l)
-
-#         // ── Date node — only when date is non-null ────────────────────
-#         WITH d, rec
-#         FOREACH (x IN CASE WHEN rec.date IS NOT NULL THEN [1] ELSE [] END |
-#             MERGE (dt:Date {date: rec.date})
-#             SET dt.date_type = rec.date_type
-#             MERGE (d)-[:HAPPENED_ON]->(dt)
-#         )
-
-#         // ── Role node — only when role is non-null ────────────────────
-#         WITH d, rec
-#         FOREACH (x IN CASE WHEN rec.role IS NOT NULL THEN [1] ELSE [] END |
-#             MERGE (r:Role {role: rec.role})
-#             MERGE (d)-[:HAS_ROLE]->(r)
-#         )
-#         """
-
-#         with self.driver.session() as session:
-#             session.run(query, batch=batch)
-
-#         logger.info("Ingested %d document(s) into Neo4j.", len(batch))
-
-
-# # ─────────────────────────────────────────────
-# # ENTRY POINT
-# # ─────────────────────────────────────────────
-
-# def main():
-#     path = Config.CLEANED_RECORDS_PATH
-#     try:
-#         if not os.path.exists(path):
-#             path = "cleaned_records.json"
-
-#         logger.info("Loading records from: %s", path)
-#         with open(path, "r", encoding="utf-8") as f:
-#             records = json.load(f)
-#         logger.info("Loaded %d record(s).", len(records))
-
-#         ingestor = Neo4jIngestor()
-#         ingestor.create_constraints()
-#         ingestor.create_vector_index()
-#         ingestor.ingest_records(records)
-#         ingestor.close()
-
-#         logger.info("Ingestion process completed successfully.")
-
-#     except FileNotFoundError:
-#         logger.error(
-#             "cleaned_records.json not found at '%s'. Run cleaner.py first.", path
-#         )
-#     except json.JSONDecodeError as e:
-#         logger.error("Failed to parse cleaned_records.json: %s", e)
-#     except Exception as e:
-#         logger.exception("Ingestion failed: %s", e)
-
-
-# if __name__ == "__main__":
-#     main()
 """
-ingest.py — Stage 2: Graph + Vector Ingestion into Neo4j
----------------------------------------------------------
+ingest.py — Stage 3: Embedding Generation + PostgreSQL/pgvector Ingestion
+---------------------------------------------------------------------------
 Input:  cleaned_records.json  (output of cleaner.py)
-Output: Neo4j graph with Document, Location, Date, Role nodes
-        + vector embeddings on Document for semantic search
+        Located at: settings.cleaned_records_path
+        OR  data/output/cleaned/cleaned_records.json  (env fallback)
+
+Output: Embeddings stored in PostgreSQL via pgvector for semantic search
+
+Full field schema preserved from cleaner.py:
+  ┌─────────────────────┬──────────────────────────────────────────────────┐
+  │ place               │ Raw place name extracted by GLiNER2              │
+  │ geocoded_place      │ Nominatim/Photon reverse-geocoded label          │
+  │ latitude            │ Signed float (N=+, S=−)                         │
+  │ longitude           │ Signed float (E=+, W=−)                         │
+  │ date                │ ISO 8601 string or period (e.g. "2024-04")       │
+  │ date_type           │ event | period | historical | unparseable | None │
+  │ date_raw            │ Original date string from doc_parser             │
+  │ time                │ Normalised HH:MM[:SS] or None                    │
+  │ role                │ Person designation from GLiNER2                  │
+  │ summary             │ Executive summary from GLiNER2                   │
+  │ geocode_status      │ exact | forward | reverse | reverse_coord_       │
+  │                     │   fallback | failed | partial | mismatch         │
+  │ source_file         │ Origin *_data.json filename                      │
+  │ sanity_note         │ Optional coord-correction note from cleaner      │
+  └─────────────────────┴──────────────────────────────────────────────────┘
+
+Pipeline:
+  1. Load cleaned_records.json
+  2. Filter/warn on geocode_status (skip mismatch; warn partial/failed)
+  3. Generate embeddings with SentenceTransformer (batched)
+     Embed priority: summary → place/geocoded_place + date + role (fallback)
+  4. Attach stable document ID (sha256 of source_file|date|place|latitude)
+  5. Upsert records + embeddings into PostgreSQL via db_store
 """
+
 import os
-import hashlib
 import json
+import hashlib
 import logging
-from typing import List, Dict, Any
+from pathlib import Path
+from typing import List, Dict, Any, Optional
 
-from neo4j import GraphDatabase
 from sentence_transformers import SentenceTransformer
-
-# ADDED: Load environment variables so os.getenv actually works
 from dotenv import load_dotenv
+
 load_dotenv()
+
+from .db_store import (
+    ensure_schema,
+    insert_records,
+    close_pool,
+)
 
 from src.config.settings import settings
 
@@ -373,24 +60,32 @@ from src.config.settings import settings
 
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format="%(asctime)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────
-# CONSTANTS & ENV VARIABLES
+# CONSTANTS
 # ─────────────────────────────────────────────
 
-# geocode_status values whose records must NOT enter the graph
+# Records with these geocode_status values are silently dropped.
+# "mismatch" means the extractor produced contradictory lat/lon+place pairs
+# that cleaner.py could not resolve — ingesting them would pollute the index.
 SKIP_STATUSES = {"mismatch"}
 
-# geocode_status values where coords exist but confidence is reduced
-WARN_STATUSES = {"partial", "reverse_failed", "failed", "forward"}
+# Records with these statuses are ingested but flagged in the log.
+# Coordinates exist but confidence is reduced (partial fix, failed reverse, etc.)
+WARN_STATUSES = {"partial", "reverse_failed", "failed", "forward", "reverse_coord_fallback"}
 
-# ADDED FALLBACKS: This prevents the Pooling TypeError if your .env is missing
-# EMBED_DIM sourced from settings.text_embedding.VECTOR_DIM
-EMBED_BATCH_SIZE = settings.text_embedding.BATCH_SIZE
-EMBED_MODEL_PATH = settings.text_embedding.MODEL_PATH
+EMBED_BATCH_SIZE: int = settings.text_embedding.BATCH_SIZE
+EMBED_MODEL_PATH: str = settings.text_embedding.MODEL_PATH
+
+# Fallback cleaned_records path mirrors cleaner.py OUTPUT_DIR convention:
+#   data/output/cleaned/cleaned_records.json
+_DEFAULT_CLEANED_PATH = Path(
+    os.getenv("CLEANED_OUTPUT_FOLDER", "./data/output/cleaned")
+) / "cleaned_records.json"
+
 
 # ─────────────────────────────────────────────
 # HELPERS
@@ -398,7 +93,11 @@ EMBED_MODEL_PATH = settings.text_embedding.MODEL_PATH
 
 def make_document_id(record: Dict[str, Any]) -> str:
     """
-    Deterministic document ID from stable fields.
+    Deterministic 16-char document ID derived from stable identity fields.
+
+    Uses source_file + date + place + latitude — the same fields cleaner.py
+    uses for deduplication — so re-ingesting the same cleaned_records.json
+    always produces the same IDs (enabling safe upserts).
     """
     key = "|".join([
         str(record.get("source_file") or ""),
@@ -411,27 +110,59 @@ def make_document_id(record: Dict[str, Any]) -> str:
 
 def build_embed_text(record: Dict[str, Any]) -> str:
     """
-    Construct the text to embed for a record.
-    """
-    if record.get("summary"):
-        return record["summary"]
+    Build the text that will be encoded into a vector embedding.
 
-    parts = [
-        record.get("place") or record.get("geocoded_place"),
+    Priority order (matches the richness of semantic content):
+      1. summary          — GLiNER2 executive summary; best semantic signal
+      2. place + geocoded_place + date + role + source_file
+                          — structured fallback when summary is absent
+         • Both place variants are included so the vector captures the
+           raw GLiNER2 extraction AND the Nominatim-resolved label.
+         • date_raw is preferred over the ISO date so temporal phrasing
+           from the original document is preserved in the embedding.
+      3. "unknown record" — last resort; prevents encoding an empty string.
+    """
+    # Tier 1 — summary
+    summary = (record.get("summary") or "").strip()
+    if summary:
+        return summary
+
+    # Tier 2 — structured fields
+    parts: List[Optional[str]] = [
+        record.get("place"),
+        record.get("geocoded_place"),   # reverse/forward geocoded label
         record.get("date_raw") or record.get("date"),
         record.get("role"),
         record.get("source_file"),
     ]
     fallback = " ".join(str(p) for p in parts if p)
-    return fallback if fallback.strip() else "unknown record"
+    return fallback.strip() or "unknown record"
 
 
-def prepare_batch(
-    records: List[Dict[str, Any]],
-    model: SentenceTransformer,
-) -> List[Dict[str, Any]]:
+def _log_geocode_warnings(record: Dict[str, Any]) -> None:
+    """Emit a structured warning for low-confidence geocode records."""
+    logger.warning(
+        "Low-confidence coords (geocode_status=%s): "
+        "place=%r  geocoded_place=%r  source=%s",
+        record.get("geocode_status"),
+        record.get("place"),
+        record.get("geocoded_place"),
+        record.get("source_file"),
+    )
+
+
+def validate_and_filter(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    Filter, enrich each record with a stable id and a vector embedding.
+    Enforce geocode_status filtering rules from cleaner.py before embedding.
+
+    - SKIP_STATUSES  (mismatch):  record is dropped; logged as WARNING.
+    - WARN_STATUSES  (partial, reverse_failed, failed, forward,
+                      reverse_coord_fallback):
+                     record is kept; low-confidence coords are flagged.
+    - Records missing both place AND geocoded_place AND coords are also
+      dropped — they carry no locatable information.
+
+    Returns the accepted subset.
     """
     accepted: List[Dict[str, Any]] = []
     skipped = 0
@@ -439,35 +170,74 @@ def prepare_batch(
     for rec in records:
         status = rec.get("geocode_status", "exact")
 
+        # Hard skip — unresolvable by cleaner
         if status in SKIP_STATUSES:
             logger.warning(
-                "Skipping record (geocode_status=%s): place=%s date=%s source=%s",
-                status, rec.get("place"), rec.get("date"), rec.get("source_file"),
+                "Skipping record (geocode_status=%s): "
+                "place=%r  date=%r  source=%s",
+                status,
+                rec.get("place"),
+                rec.get("date"),
+                rec.get("source_file"),
             )
             skipped += 1
             continue
 
+        # Soft warn — usable but degraded coordinates
         if status in WARN_STATUSES:
+            _log_geocode_warnings(rec)
+
+        # Drop records with no locatable information at all.
+        # (cleaner.py tags these with drop_reason="no_place_no_coords" and
+        #  routes them to quarantine.json, but we guard here defensively.)
+        has_place  = bool(rec.get("place") or rec.get("geocoded_place"))
+        has_coords = rec.get("latitude") is not None and rec.get("longitude") is not None
+        if not has_place and not has_coords:
             logger.warning(
-                "Low-confidence coords (geocode_status=%s): place=%s source=%s",
-                status,
-                rec.get("place") or rec.get("geocoded_place"),
+                "Dropping unlocatable record (no place, no coords): source=%s",
                 rec.get("source_file"),
             )
+            skipped += 1
+            continue
 
         accepted.append(rec)
 
     if skipped:
-        logger.info("Skipped %d record(s) with status in %s.", skipped, SKIP_STATUSES)
+        logger.info(
+            "Filtered out %d record(s) before embedding "
+            "(status in %s or no locatable info).",
+            skipped, SKIP_STATUSES,
+        )
 
-    # Batch-encode all embed texts at once
+    return accepted
+
+
+def prepare_batch(
+    records: List[Dict[str, Any]],
+    model: SentenceTransformer,
+) -> List[Dict[str, Any]]:
+    """
+    Filter, batch-encode, and enrich records with a stable id + embedding.
+
+    Steps:
+      1. validate_and_filter  — drops mismatch/unlocatable records
+      2. build_embed_text     — constructs text per record (summary-first)
+      3. model.encode (batched) — generates float32 vectors
+      4. Attach id + embedding to each accepted record dict
+
+    All original cleaner.py fields are preserved unchanged.
+    """
+    accepted = validate_and_filter(records)
+
+    if not accepted:
+        return []
+
     texts = [build_embed_text(r) for r in accepted]
+
     for i in range(0, len(texts), EMBED_BATCH_SIZE):
         batch_texts = texts[i : i + EMBED_BATCH_SIZE]
-        
-        # This is where sentence-transformers generates the vectors
-        embeddings = model.encode(batch_texts, show_progress_bar=False)
-        
+        embeddings  = model.encode(batch_texts, show_progress_bar=True)
+
         for j, emb in enumerate(embeddings):
             idx = i + j
             accepted[idx] = {
@@ -475,72 +245,71 @@ def prepare_batch(
                 "id":        make_document_id(accepted[idx]),
                 "embedding": emb.tolist(),
             }
+
         logger.info(
-            "Embedded records %d-%d / %d",
-            i + 1, min(i + EMBED_BATCH_SIZE, len(accepted)), len(accepted),
+            "Embedded records %d–%d / %d",
+            i + 1,
+            min(i + EMBED_BATCH_SIZE, len(accepted)),
+            len(accepted),
         )
 
     return accepted
 
 
+def _build_summary_stats(batch: List[Dict[str, Any]]) -> Dict[str, int]:
+    """
+    Compute per-status counts and field-coverage stats for the ingestion
+    summary printout — mirrors the statistics cleaner.py prints.
+    """
+    stats: Dict[str, int] = {
+        "total":          len(batch),
+        "with_coords":    sum(1 for r in batch if r.get("latitude") and r.get("longitude")),
+        "with_place":     sum(1 for r in batch if r.get("place")),
+        "with_geocoded":  sum(1 for r in batch if r.get("geocoded_place")),
+        "with_date":      sum(1 for r in batch if r.get("date")),
+        "with_summary":   sum(1 for r in batch if r.get("summary")),
+        "with_role":      sum(1 for r in batch if r.get("role")),
+        "sanity_fixed":   sum(1 for r in batch if r.get("sanity_note")),
+        # geocode_status breakdown
+        "exact":                  sum(1 for r in batch if r.get("geocode_status") == "exact"),
+        "forward":                sum(1 for r in batch if r.get("geocode_status") == "forward"),
+        "reverse":                sum(1 for r in batch if r.get("geocode_status") == "reverse"),
+        "reverse_coord_fallback": sum(1 for r in batch if r.get("geocode_status") == "reverse_coord_fallback"),
+        "partial":                sum(1 for r in batch if r.get("geocode_status") == "partial"),
+        "failed":                 sum(1 for r in batch if r.get("geocode_status") == "failed"),
+    }
+    return stats
+
+
 # ─────────────────────────────────────────────
-# NEO4J INGESTOR
+# PostgreSQL + pgvector INGESTOR
 # ─────────────────────────────────────────────
 
-class Neo4jIngestor:
+class PgVectorIngestor:
     """
-    Ingests cleaned records into Neo4j with graph relationships and
-    vector embeddings.
+    Ingests cleaned_records.json into PostgreSQL with pgvector embeddings.
+
+    All fields produced by cleaner.py are stored verbatim in PostgreSQL;
+    nothing is silently dropped.  The embedding is generated from the
+    richest available text signal (summary → structured fallback).
     """
 
-    def __init__(self):
-        self.driver = GraphDatabase.driver(
-            settings.neo4j.URI,
-            auth=(settings.neo4j.USER, settings.neo4j.PASSWORD),
-        )
-        # Initializes the MX-Embed model via sentence-transformers
-        logger.info(f"Loading embedding model: {EMBED_MODEL_PATH}")
+    def __init__(self) -> None:
+        logger.info("Loading embedding model: %s", EMBED_MODEL_PATH)
         self.model = SentenceTransformer(EMBED_MODEL_PATH)
 
-    def close(self):
-        self.driver.close()
+    def setup_schema(self) -> None:
+        """Create tables, indexes, and pgvector extension if absent."""
+        ensure_schema()
+        logger.info("PostgreSQL + pgvector schema verified.")
 
-    # ── Schema setup ──────────────────────────────────────────────────────
-
-    def create_constraints(self):
-        """Uniqueness constraints and lookup indexes."""
-        queries = [
-            "CREATE CONSTRAINT document_id IF NOT EXISTS FOR (d:Document) REQUIRE d.id IS UNIQUE",
-            "CREATE INDEX role_name      IF NOT EXISTS FOR (r:Role)     ON (r.role)",
-            "CREATE INDEX location_place IF NOT EXISTS FOR (l:Location) ON (l.place)",
-            "CREATE INDEX date_value     IF NOT EXISTS FOR (dt:Date)    ON (dt.date)",
-        ]
-        with self.driver.session() as session:
-            for query in queries:
-                session.run(query)
-        logger.info("Constraints and indexes created.")
-
-    def create_vector_index(self):
-        """Vector index for semantic similarity search on Document.embedding."""
-        query = f"""
-        CREATE VECTOR INDEX {settings.neo4j.VECTOR_INDEX_NAME} IF NOT EXISTS
-        FOR (d:Document) ON (d.embedding)
-        OPTIONS {{
-          indexConfig: {{
-            `vector.dimensions`:          {settings.neo4j.VECTOR_DIMENSION},
-            `vector.similarity_function`: '{settings.neo4j.SIMILARITY_FUNCTION}'
-          }}
-        }}
+    def ingest_records(self, records: List[Dict[str, Any]]) -> None:
         """
-        with self.driver.session() as session:
-            session.run(query)
-        logger.info("Vector index '%s' created.", settings.neo4j.VECTOR_INDEX_NAME)
+        Generate embeddings for all accepted records and upsert into PostgreSQL.
 
-    # ── Ingestion ─────────────────────────────────────────────────────────
-
-    def ingest_records(self, records: List[Dict[str, Any]]):
-        """
-        Prepare embeddings then write to Neo4j in one UNWIND batch.
+        Accepts the full list from cleaned_records.json (including any records
+        that cleaner.py did not quarantine).  Filtering on geocode_status and
+        field completeness is handled inside prepare_batch().
         """
         if not records:
             logger.warning("ingest_records called with empty list — nothing to do.")
@@ -548,87 +317,125 @@ class Neo4jIngestor:
 
         batch = prepare_batch(records, self.model)
         if not batch:
-            logger.warning("All records were filtered out. Nothing ingested.")
+            logger.warning(
+                "All records were filtered out after validation. "
+                "Check geocode_status distribution in cleaned_records.json."
+            )
             return
 
-        query = """
-        UNWIND $batch AS rec
+        db_summary = insert_records(batch)
+        field_stats = _build_summary_stats(batch)
 
-        // ── Document node ────────────────────────────────────────────
-        MERGE (d:Document {id: rec.id})
-        SET d.summary                 = rec.summary,
-            d.source_file             = rec.source_file,
-            d.time                    = rec.time,
-            d.date_type               = rec.date_type,
-            d.date_raw                = rec.date_raw,
-            d.geocode_status          = rec.geocode_status,
-            d.place_coord_validated   = rec.place_coord_validated,
-            d.place_coord_distance_km = rec.place_coord_distance_km,
-            d.embedding               = rec.embedding
-
-        // ── Location node ─────────────────────────────────────────────
-        WITH d, rec,
-             coalesce(rec.place, rec.geocoded_place, '__unknown__') AS loc_key
-        MERGE (l:Location {place: loc_key})
-        SET l.latitude       = rec.latitude,
-            l.longitude      = rec.longitude,
-            l.geocoded_place = rec.geocoded_place,
-            l.geocode_status = rec.geocode_status
-        MERGE (d)-[:LOCATED_AT]->(l)
-
-        // ── Date node — only when date is non-null ────────────────────
-        WITH d, rec
-        FOREACH (x IN CASE WHEN rec.date IS NOT NULL THEN [1] ELSE [] END |
-            MERGE (dt:Date {date: rec.date})
-            SET dt.date_type = rec.date_type
-            MERGE (d)-[:HAPPENED_ON]->(dt)
+        logger.info(
+            "Ingested %d record(s)  (inserted=%d  updated=%d  errors=%d).",
+            len(batch),
+            db_summary["inserted"],
+            db_summary["updated"],
+            db_summary["errors"],
         )
 
-        // ── Role node — only when role is non-null ────────────────────
-        WITH d, rec
-        FOREACH (x IN CASE WHEN rec.role IS NOT NULL THEN [1] ELSE [] END |
-            MERGE (r:Role {role: rec.role})
-            MERGE (d)-[:HAS_ROLE]->(r)
-        )
-        """
-
-        with self.driver.session() as session:
-            session.run(query, batch=batch)
-
-        logger.info("Ingested %d document(s) into Neo4j.", len(batch))
+        # ── Pretty print (mirrors cleaner.py output style) ──────────────────
+        w = 42
+        print(f"\n  {'─'*w}")
+        print(f"  pgvector Ingestion Summary")
+        print(f"  {'─'*w}")
+        print(f"  Records processed        : {field_stats['total']}")
+        print(f"  ✓ Inserted               : {db_summary['inserted']}")
+        print(f"  ↻ Updated                : {db_summary['updated']}")
+        print(f"  ✗ Errors                 : {db_summary['errors']}")
+        print(f"  {'─'*w}")
+        print(f"  Field coverage")
+        print(f"    With coordinates       : {field_stats['with_coords']}/{field_stats['total']}")
+        print(f"    With place name        : {field_stats['with_place']}/{field_stats['total']}")
+        print(f"    With geocoded_place    : {field_stats['with_geocoded']}/{field_stats['total']}")
+        print(f"    With date              : {field_stats['with_date']}/{field_stats['total']}")
+        print(f"    With summary (→ embed) : {field_stats['with_summary']}/{field_stats['total']}")
+        print(f"    With role              : {field_stats['with_role']}/{field_stats['total']}")
+        print(f"    Sanity-fixed coords    : {field_stats['sanity_fixed']}")
+        print(f"  {'─'*w}")
+        print(f"  Geocode status breakdown")
+        print(f"    exact                  : {field_stats['exact']}")
+        print(f"    forward                : {field_stats['forward']}")
+        print(f"    reverse                : {field_stats['reverse']}")
+        print(f"    reverse_coord_fallback : {field_stats['reverse_coord_fallback']}")
+        print(f"    partial                : {field_stats['partial']}")
+        print(f"    failed                 : {field_stats['failed']}")
+        print(f"  {'─'*w}\n")
 
 
 # ─────────────────────────────────────────────
 # ENTRY POINT
 # ─────────────────────────────────────────────
 
-def main():
-    path = settings.cleaned_records_path
-    try:
-        if not os.path.exists(path):
-            path = "cleaned_records.json"
+def main() -> None:
+    """
+    Resolve cleaned_records.json path, load, validate, embed, and ingest.
 
+    Path resolution order (mirrors cleaner.py OUTPUT_DIR convention):
+      1. settings.cleaned_records_path          (from src/config/settings.py)
+      2. data/output/cleaned/cleaned_records.json  (CLEANED_OUTPUT_FOLDER env)
+      3. cleaned_records.json                   (cwd fallback)
+    """
+    candidates = [
+        str(settings.cleaned_records_path),
+        str(_DEFAULT_CLEANED_PATH),
+        "cleaned_records.json",
+    ]
+
+    path: Optional[str] = None
+    for candidate in candidates:
+        if os.path.exists(candidate):
+            path = candidate
+            break
+
+    if path is None:
+        logger.error(
+            "cleaned_records.json not found at any of:\n  %s\n"
+            "Run cleaner.py first.",
+            "\n  ".join(candidates),
+        )
+        return
+
+    try:
         logger.info("Loading records from: %s", path)
         with open(path, "r", encoding="utf-8") as f:
             records = json.load(f)
+
+        if not isinstance(records, list):
+            raise ValueError(
+                f"Expected a JSON array at top level, got {type(records).__name__}. "
+                "Ensure cleaner.py wrote a flat list (not {{\"document_info\": [...]}})"
+            )
+
         logger.info("Loaded %d record(s).", len(records))
 
-        ingestor = Neo4jIngestor()
-        ingestor.create_constraints()
-        ingestor.create_vector_index()
+        ingestor = PgVectorIngestor()
+        ingestor.setup_schema()
         ingestor.ingest_records(records)
-        ingestor.close()
 
         logger.info("Ingestion process completed successfully.")
 
     except FileNotFoundError:
         logger.error(
-            "cleaned_records.json not found at '%s'. Run cleaner.py first.", path
+            "File disappeared between discovery and open: %s", path
         )
     except json.JSONDecodeError as e:
-        logger.error("Failed to parse cleaned_records.json: %s", e)
+        logger.error(
+            "Failed to parse cleaned_records.json: %s\n"
+            "The file may be truncated — re-run cleaner.py.", e
+        )
+    except ValueError as e:
+        logger.error("Unexpected format in cleaned_records.json: %s", e)
+    except ConnectionError as e:
+        logger.error(
+            "Could not connect to PostgreSQL. Make sure Docker is running:\n"
+            "  docker compose -f Docker/docker-compose.yml up -d\n"
+            "Error: %s", e,
+        )
     except Exception as e:
         logger.exception("Ingestion failed: %s", e)
+    finally:
+        close_pool()
 
 
 if __name__ == "__main__":
