@@ -13,6 +13,21 @@ What it does:
   6. Drops records that are completely unresolvable (no place AND no coords)
   7. Tags each record with source_file for traceability
   8. Writes cleaned_records.json to OUTPUT_DIR
+
+Flow:
+Raw record
+    ↓
+Parse lat/lon strings → floats
+    ↓
+If coords missing + place exists → forward geocode
+    ↓
+If place missing + coords exist → reverse geocode
+    ↓
+If STILL no place AND no coords → DROP record (return None)
+    ↓
+Normalize date string → ISO format
+    ↓
+Return clean dict with source_file tag
 """
 
 import os

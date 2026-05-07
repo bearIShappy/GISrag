@@ -362,3 +362,18 @@ docker start neo4j-gis   # if stopped
 **Vector index not found** — run Stage 4 first to create the schema, then Stage 5 to populate embeddings before running Stage 6 queries.
 
 **OCR produces garbled text** — try increasing DPI in `_ocr_page_fitz` (change `fitz.Matrix(2.0, 2.0)` to `fitz.Matrix(3.0, 3.0)`) or ensure `tesseract-ocr` is properly installed.
+
+
+
+
+
+/////////////////////////////////////////////////////////////////
+Raw Documents (PDF/DOCX/XLSX/CSV)
+        ↓
+  [doc_parser.py]  — Stage 1: Parse & Extract
+        ↓
+  *_data.json files (raw GLiNER2 output)
+        ↓
+  [cleaner.py]     — Stage 2: Clean & Normalize
+        ↓
+  cleaned_records.json (final, enriched data)
