@@ -1,30 +1,26 @@
-# Manages both your App AND Neo4j
-version: '3.8'
-
 services:
-  # Your Neo4j Database
-  neo4j-db:
-    image: neo4j:latest
-    container_name: neo4j-gis
+  # ──────────────────────────────────────────────
+  # PostgreSQL + pgvector
+  #   • Static fields: metadata, keyword search
+  #   • pgvector: semantic / embedding search
+  # ──────────────────────────────────────────────
+postgres:
+    image: pgvector/pgvector:pg16
+    container_name: gisrag-postgres
+    restart: unless-stopped
     ports:
-      - "7474:7474" # HTTP Browser
-      - "7687:7687" # Bolt Protocol
+      - "5432:5432"
     environment:
-      - NEO4J_AUTH=neo4j/password
+      POSTGRES_USER: gisrag
+      POSTGRES_PASSWORD: gisrag_secret
+      POSTGRES_DB: gisrag_db
     volumes:
-      - neo4j_data:/data # Saves your graph data even if container stops
-
-  # Your Python Application
-  gis-app:
-    build: .
-    container_name: gisrag-app
-    depends_on:
-      - neo4j-db
-    env_file:
-      - .env
-    volumes:
-      # Mounts your local data folder to the container so you can see outputs instantly
-      - ./data:/app/data 
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gisrag -d gisrag_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
-  neo4j_data:
+  pgdata:
