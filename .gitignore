@@ -7,3 +7,14 @@ data/
 image/
 models/
 Docker/
+
+# Python
+__pycache__/
+*.pyc
+
+# Virtual env
+venv/
+venvGIS/
+
+# Environment
+.env
