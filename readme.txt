@@ -5,3 +5,72 @@ doc_parser → cleaner → ingest
                     rag_pipeline
                           ↓
                          main
+
+
+
+cd docker -> docker-compose.yml
+    services:
+  # ──────────────────────────────────────────────
+  # PostgreSQL + pgvector
+  #   • Static fields: metadata, keyword search
+  #   • pgvector: semantic / embedding search
+  # ──────────────────────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: gisrag-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: gisrag
+      POSTGRES_PASSWORD: gisrag_secret
+      POSTGRES_DB: gisrag_db
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gisrag -d gisrag_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
+
+
+.env
+import os
+os.environ["HF_HUB_OFFLINE"] = "1"
+os.environ["TRANSFORMERS_OFFLINE"] = "1"
+
+# DATA PATHS
+INPUT_FOLDER="./data/input"
+EXTRACTED_OUTPUT_FOLDER="./data/output/extracted"
+CLEANED_OUTPUT_FOLDER="./data/output/cleaned"
+CACHE_DIR="./data/cache"
+
+# MODEL PATHS
+PARSING_MODEL_NAME="fastino/gliner2-large-v1"
+
+# Use the official HuggingFace hub ID so sentence-transformers can
+# resolve the full model config (including 1_Pooling/config.json).
+# If you want fully offline loading, download the model first with:
+#   huggingface-cli download mixedbread-ai/mxbai-embed-large-v1 \
+#       --local-dir models/mxbai-embed-large-v1
+# then set this to the absolute or relative path to that folder.
+EMBED_MODEL_PATH="mixedbread-ai/mxbai-embed-large-v1"
+EMBED_BATCH_SIZE=32
+VECTOR_DIMENSION=1024
+VECTOR_INDEX_NAME="idx_records_embedding"
+SIMILARITY_FUNCTION="cosine"
+
+# POSTGRESQL + PGVECTOR CONFIG
+PG_HOST="localhost"
+PG_PORT=5432
+PG_DB="gisrag_db"
+PG_USER="gisrag"
+PG_PASSWORD="gisrag_secret"
+
+# OLLAMA CONFIG  (RAG pipeline LLM)
+OLLAMA_BASE_URL="http://localhost:11434"
+OLLAMA_MODEL="gemma3:4b"
+OLLAMA_TIMEOUT=120
